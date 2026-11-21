@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Золотая Монета</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #f7f8fa);
+    --card: var(--tg-theme-secondary-bg-color, #ffffff);
+    --text: var(--tg-theme-text-color, #111827);
+    --hint: var(--tg-theme-hint-color, #6b7280);
+    --btn: var(--tg-theme-button-color, #2563eb);
+    --btn-text: var(--tg-theme-button-text-color, #ffffff);
+    --ok: #16a34a; --gold: #eab308; --err: #dc2626;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; padding: 12px 12px 80px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  .sync { font-size: 11px; color: var(--hint); display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .card { background: var(--card); border-radius: 16px; padding: 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .kpi-grid .card { margin-bottom: 0; padding: 12px; }
+  .lbl { font-size: 12px; color: var(--hint); }
+  .val { font-size: 18px; font-weight: 700; margin-top: 3px; }
+  .title { font-weight: 700; font-size: 15px; }
+  .sub { font-size: 12px; color: var(--hint); margin-top: 2px; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .btn { background: var(--btn); color: var(--btn-text); border: none; border-radius: 12px; padding: 10px 14px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-sm { padding: 7px 11px; font-size: 12px; border-radius: 9px; }
+  .btn-full { width: 100%; margin-top: 8px; }
+  .btn-ghost { background: rgba(128,128,128,.12); color: var(--text); }
+  input, select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(128,128,128,.25); background: var(--bg); color: var(--text); font-size: 15px; margin: 4px 0 10px; }
+  .tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: var(--card); border-top: 1px solid rgba(128,128,128,.15); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); z-index: 20; }
+  .tab { flex: 1; text-align: center; padding: 6px 2px; font-size: 11px; color: var(--hint); border: none; background: none; font-weight: 600; position: relative; }
+  .tab.active { color: var(--btn); }
+  .dot-badge { position: absolute; top: 2px; right: 16%; background: var(--err); color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 99px; }
+  .section { display: none; }
+  .section.active { display: block; }
+  .prog-track { height: 8px; background: rgba(128,128,128,.18); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+  .prog-fill { height: 100%; background: var(--ok); border-radius: 99px; transition: width .4s; }
+  .donut-wrap { display: flex; align-items: center; gap: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .bars { display: flex; align-items: flex-end; gap: 6px; height: 105px; padding-top: 16px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+  .bar-rect { width: 100%; max-width: 24px; background: var(--btn); border-radius: 6px 6px 2px 2px; min-height: 3px; }
+  .bar-lbl { font-size: 10px; color: var(--hint); margin-top: 4px; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: flex-end; z-index: 50; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--card); width: 100%; border-radius: 20px 20px 0 0; padding: 16px; max-height: 85vh; overflow-y: auto; }
+  .batch-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--card); border-radius: 12px; margin-bottom: 6px; }
+  .batch-row input[type=checkbox] { width: 20px; height: 20px; margin: 0; }
+  .batch-row input[type=number] { width: 92px; margin: 0 0 0 auto; padding: 6px; text-align: right; }
+</style>
+</head>
+<body>
+
+<div class="sync"><span id="userBadge">Золотая Монета</span><span id="syncStatus">Загрузка...</span></div>
+
+<!-- ЭКРАН 0: Авторегистрация нового пользователя (Telegram ID уже записан) -->
+<div id="sec-unreg" class="section">
+  <div class="card">
+    <div class="title" style="font-size:18px;margin-bottom:6px">Добро пожаловать в кассу</div>
+    <div class="sub" id="unregInfo" style="margin-bottom:12px"></div>
+    <label class="lbl">Ваше имя (как записано у казначея)</label>
+    <input type="text" id="claimName" placeholder="Например: Адиба или Азамат" />
+    <label class="lbl">Ваш статус в кассе</label>
+    <select id="claimRole">
+      <option value="member">Участник (пайщик)</option>
+      <option value="borrower">Заёмщик</option>
+    </select>
+    <button class="btn btn-full" id="btnSendClaim">Отправить заявку казначею</button>
+    <button class="btn btn-full btn-ghost" onclick="loadBootstrap(true)">Проверить подтверждение</button>
+  </div>
+</div>
+
+<!-- ЭКРАН 1: Личный кабинет (Инфографика для Участника и Заёмщика) -->
+<div id="sec-cabinet" class="section">
+  <div id="cabinetContent"></div>
+</div>
+
+<!-- ЭКРАН 2: Общая касса (только Админ) -->
+<div id="sec-admin-home" class="section">
+  <div class="kpi-grid">
+    <div class="card"><div class="lbl">Свободно в кассе</div><div class="val" id="kpiCash">—</div></div>
+    <div class="card"><div class="lbl">Всего вкладов</div><div class="val" id="kpiDep">—</div></div>
+    <div class="card"><div class="lbl">На руках в займах</div><div class="val" id="kpiLoans">—</div></div>
+    <div class="card"><div class="lbl">Доход от %</div><div class="val" id="kpiInt">—</div></div>
+  </div>
+  <div class="card">
+    <div class="title" style="margin-bottom:4px">Движение кассы по месяцам</div>
+    <div class="sub">Синий — приток · Серый — выдача займов</div>
+    <div id="cfChart"></div>
+  </div>
+  <div id="adminMembersList"></div>
+</div>
+
+<!-- ЭКРАН 3: Займы (Админ) -->
+<div id="sec-loans" class="section">
+  <button class="btn btn-full" id="btnNewLoan" style="margin-bottom:10px">+ Выдать новый займ</button>
+  <div id="loansList"></div>
+</div>
+
+<!-- ЭКРАН 4: Сбор 10-го числа (Админ) -->
+<div id="sec-batch" class="section">
+  <div class="card">
+    <div class="title">Сбор вкладов 10-го числа</div>
+    <input type="date" id="batchDate" />
+  </div>
+  <div id="batchList"></div>
+  <button class="btn btn-full" id="btnSubmitBatch">Провести выбранные вклады</button>
+</div>
+
+<!-- ЭКРАН 5: Заявки на доступ (Админ) -->
+<div id="sec-pending" class="section">
+  <div class="title" style="margin:4px 0 10px">Новые входы (Telegram ID)</div>
+  <div id="pendingList"></div>
+</div>
+
+<nav class="tabs" id="navBar" style="display:none"></nav>
+
+<!-- Модалка оплаты займа -->
+<div class="modal-bg" id="payModal">
+  <div class="modal">
+    <div class="title" id="payTitle">Оплата займа</div>
+    <div class="sub" id="payHint" style="margin-bottom:10px"></div>
+    <label class="lbl">Погашение тела (₽)</label>
+    <input type="number" id="payPrinc" step="0.01" inputmode="decimal" />
+    <label class="lbl">Оплата процентов 5% (₽)</label>
+    <input type="number" id="payInt" step="0.01" inputmode="decimal" />
+    <label class="lbl">Комментарий</label>
+    <input type="text" id="payComment" placeholder="Перевод на карту" />
+    <button class="btn btn-full" id="btnConfirmPay">Сохранить</button>
+    <button class="btn btn-full btn-ghost" onclick="closeModals()">Отмена</button>
+  </div>
+</div>
+
+<!-- Модалка выдачи займа -->
+<div class="modal-bg" id="newLoanModal">
+  <div class="modal">
+    <div class="title" style="margin-bottom:8px">Выдать займ</div>
+    <label class="lbl">Заёмщик</label>
+    <select id="nlBorrower"></select>
+    <label class="lbl">Сумма (₽)</label>
+    <input type="number" id="nlAmount" step="1000" inputmode="numeric" />
+    <label class="lbl">Дата</label>
+    <input type="date" id="nlDate" />
+    <label class="lbl">Примечание</label>
+    <input type="text" id="nlNote" />
+    <button class="btn btn-full" id="btnConfirmLoan">Выдать</button>
+    <button class="btn btn-full btn-ghost" onclick="closeModals()">Отмена</button>
+  </div>
+</div>
+
+<script>
+// === ВСТАВЬТЕ СЮДА URL ВЕБ-ПРИЛОЖЕНИЯ ИЗ GOOGLE APPS SCRIPT ===
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwdJ9gbSehPgmhtX15kSJaHHrICzMXdpNq4zumkpQOuKvTQvqaaceZF6U5YEAZybMtj/exec";
+
+const tg = window.Telegram.WebApp;
+tg.ready(); tg.expand();
+
+const uid = tg.initDataUnsafe?.user?.id || "anon";
+const CACHE_KEY = "zm_gas_cache_" + uid;
+let STATE = null;
+let ACTIVE_LOAN = null;
+
+const fmt = (kop) => (kop / 100).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + " ₽";
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(16).slice(2));
+const todayISO = () => new Date().toISOString().slice(0, 10);
+document.getElementById("batchDate").value = todayISO();
+document.getElementById("nlDate").value = todayISO();
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+// Безопасный SVG Donut (процент заполнения + цвет)
+function makeDonutSVG(pct, color, centerTop, centerSub) {
+  const ns = "http://www.w3.org/2000/svg";
+  const r = 42, c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, pct));
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("width", "104"); svg.setAttribute("height", "104"); svg.setAttribute("viewBox", "0 0 104 104");
+  const bg = document.createElementNS(ns, "circle");
+  bg.setAttribute("cx", "52"); bg.setAttribute("cy", "52"); bg.setAttribute("r", r);
+  bg.setAttribute("fill", "none"); bg.setAttribute("stroke", "rgba(128,128,128,0.18)"); bg.setAttribute("stroke-width", "11");
+  const fg = document.createElementNS(ns, "circle");
+  fg.setAttribute("cx", "52"); fg.setAttribute("cy", "52"); fg.setAttribute("r", r);
+  fg.setAttribute("fill", "none"); fg.setAttribute("stroke", color); fg.setAttribute("stroke-width", "11");
+  fg.setAttribute("stroke-dasharray", `${(clamped / 100) * c} ${c}`);
+  fg.setAttribute("stroke-linecap", "round");
+  fg.setAttribute("transform", "rotate(-90 52 52)");
+  const t1 = document.createElementNS(ns, "text");
+  t1.setAttribute("x", "52"); t1.setAttribute("y", "50"); t1.setAttribute("text-anchor", "middle");
+  t1.setAttribute("fill", "currentColor"); t1.setAttribute("font-size", "16"); t1.setAttribute("font-weight", "700");
+  t1.textContent = centerTop;
+  const t2 = document.createElementNS(ns, "text");
+  t2.setAttribute("x", "52"); t2.setAttribute("y", "65"); t2.setAttribute("text-anchor", "middle");
+  t2.setAttribute("fill", "#6b7280"); t2.setAttribute("font-size", "10");
+  t2.textContent = centerSub;
+  svg.append(bg, fg, t1, t2);
+  return svg;
+}
+
+// POST с text/plain (обход CORS preflight для Google Apps Script)
+async function apiCall(action, payload = {}, extra = {}) {
+  const res = await fetch(GAS_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      action, payload, initData: tg.initData || "",
+      idempotencyKey: uuid(), ...extra
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+async function loadBootstrap(force = false) {
+  const cached = localStorage.getItem(CACHE_KEY);
+  if (cached && !STATE) {
+    STATE = JSON.parse(cached);
+    renderApp();
+    document.getElementById("syncStatus").textContent = "Кэш · обновление...";
+  }
+  try {
+    const data = await apiCall("bootstrap", {}, { clientVer: force ? "" : (STATE?.ver || "") });
+    if (data.notModified) {
+      document.getElementById("syncStatus").textContent = "Актуально";
+      return;
+    }
+    STATE = data;
+    if (data.status === "ok") localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    else localStorage.removeItem(CACHE_KEY);
+    renderApp();
+    document.getElementById("syncStatus").textContent = "Обновлено " + new Date().toLocaleTimeString("ru-RU").slice(0, 5);
+  } catch (e) {
+    document.getElementById("syncStatus").textContent = "Ошибка сети";
+    if (!STATE) tg.showAlert(e.message);
+  }
+}
+
+function showSection(id) {
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+function renderApp() {
+  if (!STATE) return;
+  const nav = document.getElementById("navBar");
+
+  // 1. Незарегистрированный пользователь (ID уже записан в таблицу PendingUsers)
+  if (STATE.status === "unregistered") {
+    nav.style.display = "none";
+    document.getElementById("userBadge").textContent = `ID: ${STATE.tg.id}`;
+    document.getElementById("unregInfo").textContent = STATE.claimed?.name
+      ? `Ваш Telegram ID (${STATE.tg.id}) записан. Заявка от имени «${STATE.claimed.name}» ожидает подтверждения казначея.`
+      : `Ваш Telegram ID (${STATE.tg.id}) автоматически зафиксирован. Укажите ваше имя, чтобы казначей открыл личный кабинет.`;
+    if (STATE.claimed?.name) document.getElementById("claimName").value = STATE.claimed.name;
+    showSection("sec-unreg");
+    return;
+  }
+
+  const role = STATE.me.role;
+  const roleLabel = { admin: "Казначей", member: "Участник", borrower: "Заёмщик" }[role];
+  document.getElementById("userBadge").textContent = `${STATE.me.full_name} · ${roleLabel}`;
+
+  // 2. Панель вкладок зависит от роли
+  nav.replaceChildren();
+  let tabs = [];
+  if (role === "admin") {
+    tabs = [
+      { id: "sec-admin-home", label: "Касса" },
+      { id: "sec-loans", label: "Займы" },
+      { id: "sec-batch", label: "Сбор 10-го" },
+      { id: "sec-pending", label: "Заявки", badge: STATE.pending_users.length },
+      { id: "sec-cabinet", label: "Мой кабинет" }
+    ];
+    nav.style.display = "flex";
+    renderAdminScreens();
+  } else {
+    nav.style.display = "none";
+  }
+
+  tabs.forEach((t, idx) => {
+    const b = el("button", "tab" + (idx === 0 ? " active" : ""), t.label);
+    if (t.badge > 0) b.append(el("span", "dot-badge", String(t.badge)));
+    b.onclick = () => {
+      tg.HapticFeedback?.selectionChanged();
+      nav.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      showSection(t.id);
+    };
+    nav.append(b);
+  });
+
+  renderPersonalCabinet();
+  showSection(role === "admin" ? "sec-admin-home" : "sec-cabinet");
+}
+
+// --- Личный кабинет с инфографикой (Участник / Заёмщик / Казначей) ---
+function renderPersonalCabinet() {
+  const box = document.getElementById("cabinetContent");
+  box.replaceChildren();
+
+  const isAdmin = STATE.me.role === "admin";
+  const myMember = isAdmin ? STATE.members.find(m => m.id === STATE.me.id) : STATE.my_member;
+  const myLoans = isAdmin ? STATE.loans.filter(l => l.borrower_id === STATE.me.id) : (STATE.my_loans || []);
+  const myLedger = isAdmin ? STATE.recent_ledger.filter(r => r.person_id === STATE.me.id) : (STATE.my_ledger || []);
+
+  // Блок пайщика (инфографика капитала + столбцы по месяцам)
+  if (myMember) {
+    const totalCap = myMember.deposit_kop + myMember.profit_kop;
+    const profitPct = totalCap > 0 ? Math.round((myMember.profit_kop / totalCap) * 1000) / 10 : 0;
+
+    const c1 = el("div", "card");
+    c1.append(el("div", "title", "Мой капитал в кассе"));
+    const dw = el("div", "donut-wrap");
+    dw.style.marginTop = "10px";
+    dw.append(makeDonutSVG(profitPct, "#16a34a", `+${profitPct}%`, "доходность"));
+
+    const leg = el("div");
+    const addLeg = (color, label, val) => {
+      const r = el("div", "legend-item");
+      const sw = el("span", "swatch"); sw.style.background = color;
+      r.append(sw, el("span", "", `${label}: `), el("strong", "", val));
+      leg.append(r);
+    };
+    addLeg("#2563eb", "Вклады", `${fmt(myMember.deposit_kop)} (${myMember.coins} мон.)`);
+    addLeg("#16a34a", "Доход %", `+${fmt(myMember.profit_kop)}`);
+    addLeg("#eab308", "Доля в кассе", `${myMember.share_pct}%`);
+    leg.append(el("div", "val", `К выплате: ${fmt(myMember.net_due_kop)}`));
+    dw.append(leg);
+    c1.append(dw);
+    box.append(c1);
+
+    // Столбчатая диаграмма вкладов по месяцам
+    const months = Object.keys(myMember.monthly_deposits || {}).sort();
+    if (months.length) {
+      const c2 = el("div", "card");
+      c2.append(el("div", "title", "Мои вклады по месяцам"));
+      const maxVal = Math.max(...months.map(m => myMember.monthly_deposits[m]), 1);
+      const bars = el("div", "bars");
+      const mNames = ["", "Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
+      months.slice(-10).forEach(ym => {
+        const val = myMember.monthly_deposits[ym];
+        const col = el("div", "bar-col");
+        const tip = el("div", "bar-lbl", String(Math.round(val / 100000)) + "к");
+        const rect = el("div", "bar-rect");
+        rect.style.height = Math.max(8, Math.round((val / maxVal) * 68)) + "px";
+        const mIdx = parseInt(ym.slice(5, 7), 10);
+        col.append(tip, rect, el("div", "bar-lbl", mNames[mIdx] || ym.slice(5)));
+        bars.append(col);
+      });
+      c2.append(bars);
+      box.append(c2);
+    }
+  }
+
+  // Блок заёмщика (инфографика погашения займов)
+  if (myLoans.length) {
+    const totPrinc = myLoans.reduce((s, l) => s + l.principal_kop, 0);
+    const totPaid = myLoans.reduce((s, l) => s + l.paid_principal_kop, 0);
+    const totRem = myLoans.reduce((s, l) => s + l.remaining_kop, 0);
+    const totNextInt = myLoans.filter(l => l.status === "active").reduce((s, l) => s + l.next_interest_kop, 0);
+    const pct = totPrinc > 0 ? Math.round((totPaid / totPrinc) * 100) : 0;
+
+    const lc = el("div", "card");
+    lc.append(el("div", "title", "Мои займы — сводка"));
+    const dw = el("div", "donut-wrap");
+    dw.style.marginTop = "10px";
+    dw.append(makeDonutSVG(pct, "#2563eb", `${pct}%`, "погашено"));
+    const info = el("div");
+    info.append(el("div", "lbl", "Остаток долга"));
+    info.append(el("div", "val", fmt(totRem)));
+    info.append(el("div", "sub", `Процент за месяц (5%): ${fmt(totNextInt)}`));
+    info.append(el("div", "sub", `Всего взято: ${fmt(totPrinc)}`));
+    dw.append(info);
+    lc.append(dw);
+    box.append(lc);
+
+    myLoans.forEach(l => {
+      const card = el("div", "card");
+      const top = el("div", "row");
+      top.append(el("div", "title", `Займ #${l.id} от ${l.issued_date}`), el("div", "sub", l.status === "closed" ? "Закрыт" : `5%: ${fmt(l.next_interest_kop)}`));
+      card.append(top);
+      card.append(el("div", "sub", `Погашено ${fmt(l.paid_principal_kop)} из ${fmt(l.principal_kop)} · Уплачено %: ${fmt(l.paid_interest_kop)}`));
+      const tr = el("div", "prog-track");
+      const fi = el("div", "prog-fill"); fi.style.width = l.progress_pct + "%";
+      tr.append(fi);
+      card.append(tr);
+      box.append(card);
+    });
+  } else if (STATE.me.role === "borrower") {
+    box.append(el("div", "card", "У вас пока нет активных займов."));
+  }
+
+  // Личная история операций
+  const hc = el("div", "card");
+  hc.append(el("div", "title", "Последние операции"));
+  const labels = {
+    deposit: "Вклад", deposit_withdraw: "Вывод вклада", fine: "Штраф",
+    loan_issue: "Получен займ", loan_principal: "Погашение тела", loan_interest: "Оплата %",
+    payout: "Выплата"
+  };
+  if (!myLedger.length) hc.append(el("div", "sub", "Операций пока нет"));
+  myLedger.slice(0, 20).forEach(r => {
+    const row = el("div", "row");
+    row.style.padding = "8px 0";
+    row.style.borderBottom = "1px solid rgba(128,128,128,.12)";
+    const l = el("div");
+    l.append(el("div", "", labels[r.op_type] || r.op_type), el("div", "sub", r.op_date + (r.comment ? " · " + r.comment : "")));
+    row.append(l, el("strong", "", fmt(r.amount_kop)));
+    hc.append(row);
+  });
+  box.append(hc);
+}
+
+// --- Экраны казначея ---
+function renderAdminScreens() {
+  document.getElementById("kpiCash").textContent = fmt(STATE.kpi.cash_kop);
+  document.getElementById("kpiDep").textContent = fmt(STATE.kpi.total_deposits_kop);
+  document.getElementById("kpiLoans").textContent = fmt(STATE.kpi.outstanding_loans_kop);
+  document.getElementById("kpiInt").textContent = fmt(STATE.kpi.total_interest_kop);
+
+  // График CashFlow
+  const cfBox = document.getElementById("cfChart");
+  cfBox.replaceChildren();
+  const months = Object.keys(STATE.monthly_cashflow || {}).sort().slice(-8);
+  if (months.length) {
+    const maxV = Math.max(...months.map(m => Math.max(STATE.monthly_cashflow[m].in_kop, STATE.monthly_cashflow[m].out_kop)), 1);
+    const bars = el("div", "bars");
+    months.forEach(ym => {
+      const cf = STATE.monthly_cashflow[ym];
+      const col = el("div", "bar-col");
+      const pair = el("div");
+      pair.style.cssText = "display:flex;align-items:flex-end;gap:2px;height:75px";
+      const b1 = el("div"); b1.style.cssText = `width:10px;border-radius:4px 4px 0 0;background:#2563eb;height:${Math.max(4, Math.round(cf.in_kop / maxV * 70))}px`;
+      const b2 = el("div"); b2.style.cssText = `width:10px;border-radius:4px 4px 0 0;background:rgba(128,128,128,.35);height:${Math.max(4, Math.round(cf.out_kop / maxV * 70))}px`;
+      pair.append(b1, b2);
+      col.append(pair, el("div", "bar-lbl", ym.slice(5)));
+      bars.append(col);
+    });
+    cfBox.append(bars);
+  }
+
+  // Список участников
+  const mList = document.getElementById("adminMembersList");
+  mList.replaceChildren();
+  STATE.members.forEach(m => {
+    const c = el("div", "card row");
+    const l = el("div");
+    l.append(el("div", "title", m.full_name), el("div", "sub", `${fmt(m.deposit_kop)} (${m.coins} мон.) · +${fmt(m.profit_kop)}`));
+    const r = el("div"); r.style.textAlign = "right";
+    r.append(el("div", "title", fmt(m.net_due_kop)), el("div", "sub", m.status === "exited" ? "Выплачено" : `${m.share_pct}%`));
+    c.append(l, r); mList.append(c);
+  });
+
+  // Займы
+  const lList = document.getElementById("loansList");
+  lList.replaceChildren();
+  STATE.loans.forEach(l => {
+    const c = el("div", "card");
+    const top = el("div", "row");
+    const left = el("div");
+    left.append(el("div", "title", `${l.borrower_name} · #${l.id}`));
+    left.append(el("div", "sub", l.status === "active"
+      ? `Остаток: ${fmt(l.remaining_kop)} · 5%: ${fmt(l.next_interest_kop)}`
+      : `Закрыт · Выдано ${fmt(l.principal_kop)}, %: ${fmt(l.paid_interest_kop)}`));
+    top.append(left);
+    if (l.status === "active") {
+      const btn = el("button", "btn btn-sm", "Оплата");
+      btn.onclick = () => openPayModal(l);
+      top.append(btn);
+    }
+    c.append(top);
+    const tr = el("div", "prog-track");
+    const fi = el("div", "prog-fill"); fi.style.width = l.progress_pct + "%";
+    tr.append(fi); c.append(tr);
+    lList.append(c);
+  });
+
+  // Сбор 10-го числа + селект заёмщиков
+  const bList = document.getElementById("batchList");
+  bList.replaceChildren();
+  STATE.members.filter(m => m.status === "active").forEach(m => {
+    const row = el("label", "batch-row");
+    const cb = el("input"); cb.type = "checkbox"; cb.dataset.pid = m.id;
+    const num = el("input"); num.type = "number"; num.value = m.default_deposit_kop / 100; num.step = "1000";
+    row.append(cb, el("span", "title", m.full_name), num);
+    bList.append(row);
+  });
+
+  const sel = document.getElementById("nlBorrower");
+  sel.replaceChildren();
+  STATE.all_people.forEach(p => {
+    const o = el("option", "", p.full_name + (p.is_member ? "" : " (заёмщик)"));
+    o.value = p.id; sel.append(o);
+  });
+
+  // Заявки на привязку Telegram ID
+  const pList = document.getElementById("pendingList");
+  pList.replaceChildren();
+  if (!STATE.pending_users.length) {
+    pList.append(el("div", "card sub", "Новых заявок нет. Когда участник или заёмщик откроет бота, он появится здесь."));
+    return;
+  }
+  const unbound = STATE.all_people.filter(p => !p.telegram_id);
+  STATE.pending_users.forEach(u => {
+    const c = el("div", "card");
+    c.append(el("div", "title", `${u.tg_name || "Без имени"} ${u.tg_username ? "(@" + u.tg_username + ")" : ""}`));
+    c.append(el("div", "sub", `ID: ${u.telegram_id} · Указал: ${u.claimed_name || "не указано"} (${u.claimed_role === "borrower" ? "Заёмщик" : "Участник"})`));
+
+    const pick = el("select");
+    const oNew = el("option", "", "+ Создать нового в таблице"); oNew.value = "0";
+    pick.append(oNew);
+    unbound.forEach(p => {
+      const o = el("option", "", `Привязать к: ${p.full_name} (${p.role})`);
+      o.value = p.id;
+      if (u.claimed_name && p.full_name.toLowerCase() === u.claimed_name.toLowerCase()) o.selected = true;
+      pick.append(o);
+    });
+
+    const roleSel = el("select");
+    [["member", "Роль: Участник"], ["borrower", "Роль: Заёмщик"], ["admin", "Роль: Казначей"]].forEach(([v, txt]) => {
+      const o = el("option", "", txt); o.value = v;
+      if (v === u.claimed_role) o.selected = true;
+      roleSel.append(o);
+    });
+
+    const btn = el("button", "btn btn-full", "Подтвердить и открыть доступ");
+    btn.onclick = async () => {
+      try {
+        await apiCall("approve_user", {
+          telegram_id: u.telegram_id, tg_username: u.tg_username,
+          person_id: Number(pick.value), new_name: u.claimed_name || u.tg_name, role: roleSel.value
+        });
+        tg.HapticFeedback?.notificationOccurred("success");
+        await loadBootstrap(true);
+      } catch (e) { tg.showAlert(e.message); }
+    };
+    c.append(pick, roleSel, btn);
+    pList.append(c);
+  });
+}
+
+// --- Обработчики кнопок ---
+document.getElementById("btnSendClaim").onclick = async () => {
+  try {
+    await apiCall("submit_claim", {
+      claimed_name: document.getElementById("claimName").value,
+      claimed_role: document.getElementById("claimRole").value
+    });
+    tg.showAlert("Заявка отправлена! Как только казначей подтвердит ваш ID, откроется личный кабинет.");
+    await loadBootstrap(true);
+  } catch (e) { tg.showAlert(e.message); }
+};
+
+function openPayModal(loan) {
+  ACTIVE_LOAN = loan;
+  document.getElementById("payTitle").textContent = `${loan.borrower_name} (займ #${loan.id})`;
+  document.getElementById("payHint").textContent = `Остаток: ${fmt(loan.remaining_kop)} · 5%: ${fmt(loan.next_interest_kop)}`;
+  document.getElementById("payPrinc").value = "";
+  document.getElementById("payInt").value = (loan.next_interest_kop / 100).toFixed(2);
+  document.getElementById("payModal").classList.add("open");
+}
+
+function closeModals() {
+  document.querySelectorAll(".modal-bg").forEach(m => m.classList.remove("open"));
+}
+
+document.getElementById("btnNewLoan").onclick = () => document.getElementById("newLoanModal").classList.add("open");
+
+document.getElementById("btnConfirmPay").onclick = async () => {
+  try {
+    await apiCall("pay_loan", {
+      loan_id: ACTIVE_LOAN.id, op_date: todayISO(),
+      principal: parseFloat(document.getElementById("payPrinc").value) || 0,
+      interest: parseFloat(document.getElementById("payInt").value) || 0,
+      comment: document.getElementById("payComment").value
+    });
+    tg.HapticFeedback?.notificationOccurred("success");
+    closeModals(); await loadBootstrap(true);
+  } catch (e) { tg.showAlert(e.message); }
+};
+
+document.getElementById("btnConfirmLoan").onclick = async () => {
+  try {
+    await apiCall("create_loan", {
+      borrower_id: Number(document.getElementById("nlBorrower").value),
+      amount: parseFloat(document.getElementById("nlAmount").value) || 0,
+      issued_date: document.getElementById("nlDate").value,
+      note: document.getElementById("nlNote").value
+    });
+    tg.HapticFeedback?.notificationOccurred("success");
+    closeModals(); await loadBootstrap(true);
+  } catch (e) { tg.showAlert(e.message); }
+};
+
+document.getElementById("btnSubmitBatch").onclick = async () => {
+  const items = [];
+  document.querySelectorAll("#batchList .batch-row").forEach(r => {
+    const cb = r.querySelector("input[type=checkbox]");
+    const num = r.querySelector("input[type=number]");
+    if (cb.checked && parseFloat(num.value) > 0) {
+      items.push({ person_id: Number(cb.dataset.pid), amount: parseFloat(num.value) });
+    }
+  });
+  if (!items.length) return tg.showAlert("Отметьте участников");
+  try {
+    await apiCall("batch_deposits", { op_date: document.getElementById("batchDate").value, items });
+    tg.HapticFeedback?.notificationOccurred("success");
+    tg.showAlert(`Проведено вкладов: ${items.length}`);
+    await loadBootstrap(true);
+  } catch (e) { tg.showAlert(e.message); }
+};
+
+loadBootstrap();
+</script>
+</body>
+</html>
